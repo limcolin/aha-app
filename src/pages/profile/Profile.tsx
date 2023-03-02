@@ -46,6 +46,7 @@ export default function Profile() {
   });
   const [editing, setEditing] = useState(false);
   const [authenticating, setAuthenticating] = useState(false);
+  const [fetchingData, setFetchingData] = useState(true);
   const [updatedName, setUpdatedName] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [open, setOpen] = useState(true);
@@ -130,6 +131,7 @@ export default function Profile() {
     };
 
     fetchData();
+    setFetchingData(false);
   }, [user]);
 
   useEffect(() => {
@@ -142,7 +144,7 @@ export default function Profile() {
     if (!user) navigate('/login');
   }, [user, loading, error, navigate]);
 
-  if (!loading && user)
+  if (!loading && user && !fetchingData)
     return (
       <Box sx={{ display: 'flex', width: '100%' }}>
         <AppBar
