@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { sendEmailVerification } from 'firebase/auth';
-import { collection, getDocs } from 'firebase/firestore';
 import {
   Box,
   CircularProgress,
@@ -15,8 +14,12 @@ import {
 import { LoadingButton } from '@mui/lab';
 import { Lock as LockIcon } from '@mui/icons-material';
 import { isToday } from 'date-fns';
-import axios from 'axios';
-import { auth, db } from '../../config/firebase';
+import { auth } from '../../config/firebase';
+import {
+  getDbUsers,
+  getDbLogEntriesForUser,
+  getDbLogEntries,
+} from '../../config/db';
 import { last7Days, dedupeArray, errorHandler } from '../../config/utils';
 import AppBar from '../../components/AppBar';
 import Drawer from '../../components/Drawer';
@@ -24,7 +27,7 @@ import Chart from '../../components/Chart';
 import Stats from '../../components/Stats';
 import Users from '../../components/Users';
 import Copyright from '../../components/Copyright';
-import { UserInfo, ChartData } from '../../config/types';
+import { UserInfo, ChartData, DbUser } from '../../config/types';
 
 export default function Dashboard() {
   const [userInfo, setUserInfo] = useState<UserInfo>({
@@ -72,13 +75,20 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         if (user) {
-          const querySnap = await getDocs(collection(db, 'users'));
-          if (!querySnap.empty) {
-            setTotalUsers(querySnap.size);
+          const usersData = await getDbUsers();
+          const userLogsData = await getDbLogEntriesForUser(user.uid);
+          const userLogsArray = userLogsData.map(
+            (userLog: { entry: string }) => userLog.entry,
+          );
+          const userLogsDeduped = dedupeArray(userLogsArray);
+
+          const allLogsData = await getDbLogEntries();
+
+          if (usersData.length > 0) {
+            setTotalUsers(usersData.length);
 
             let activeCount = 0;
-            const usersArr: UserInfo[] = [];
-            querySnap.forEach((userDoc) => {
+            const usersArr: UserInfo[] = usersData.map((userDoc: DbUser) => {
               const {
                 displayName,
                 email,
@@ -87,10 +97,9 @@ export default function Dashboard() {
                 creationTime,
                 lastSignInTime,
                 timesLoggedIn,
-                accessLogs,
-              } = userDoc.data();
+              } = userDoc;
 
-              if (user.uid === userDoc.id)
+              if (user.uid === userDoc.uid)
                 setUserInfo({
                   displayName,
                   email,
@@ -99,12 +108,22 @@ export default function Dashboard() {
                   creationTime,
                   lastSignInTime,
                   timesLoggedIn,
-                  accessLogs,
+                  accessLogs: userLogsDeduped,
                 });
 
               if (isToday(new Date(lastSignInTime))) activeCount += 1;
+              setActiveToday(activeCount);
 
-              usersArr.push({
+              const logs = allLogsData.filter(
+                (row: { entry: string; uid: string }) =>
+                  row.uid === userDoc.uid,
+              );
+              const logsArray = logs.map(
+                (userLog: { entry: string }) => userLog.entry,
+              );
+              const logsDeduped = dedupeArray(logsArray);
+
+              return {
                 displayName,
                 email,
                 providerId,
@@ -112,10 +131,10 @@ export default function Dashboard() {
                 creationTime,
                 lastSignInTime,
                 timesLoggedIn,
-                accessLogs,
-              });
+                accessLogs: logsDeduped,
+              };
             });
-            setActiveToday(activeCount);
+
             setUsers(usersArr);
           }
         }
@@ -127,19 +146,6 @@ export default function Dashboard() {
     fetchData();
     setFetchingData(false);
   }, [user]);
-
-  useEffect(() => {
-    async function getUsers() {
-      try {
-        const response = await axios.get('/.netlify/functions/api/users');
-        console.log(JSON.parse(response.data.body));
-      } catch (err) {
-        errorHandler(err);
-      }
-    }
-
-    getUsers();
-  }, []);
 
   useEffect(() => {
     if (users.length > 0) {
@@ -175,7 +181,7 @@ export default function Dashboard() {
     if (!user) navigate('/login');
   }, [user, loading, error, navigate]);
 
-  if (!loading && user)
+  if (!loading && user && !fetchingData)
     return (
       <Box sx={{ display: 'flex', width: '100%' }}>
         <AppBar
@@ -211,115 +217,103 @@ export default function Dashboard() {
             {(user.emailVerified ||
               user.providerData[0].providerId === 'google.com' ||
               user.providerData[0].providerId === 'facebook.com') && (
-              <Grid
-                container
-                spacing={3}
-              >
-                {/* Chart */}
-                <Grid
-                  item
-                  xs={12}
-                  md={4}
-                  lg={6}
-                >
-                  <Paper
-                    sx={{
-                      p: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      height: 240,
-                    }}
+              <>
+                {fetchingData && (
+                  <Container
+                    component="main"
+                    maxWidth="xs"
                   >
-                    <Chart
-                      data={chartData}
-                      rollingAverage={rollingAverage}
-                    />
-                  </Paper>
-                </Grid>
-                <Grid
-                  item
-                  xs={12}
-                  md={4}
-                  lg={3}
-                >
-                  {fetchingData && (
-                    <Paper
+                    <Box
                       sx={{
-                        p: 2,
+                        mt: 8,
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        height: 240,
                       }}
                     >
                       <CircularProgress />
-                    </Paper>
-                  )}
-                  {!fetchingData && (
-                    <Paper
-                      sx={{
-                        p: 2,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        height: 240,
-                      }}
+                    </Box>
+                  </Container>
+                )}
+                {!fetchingData && (
+                  <Grid
+                    container
+                    spacing={3}
+                  >
+                    <Grid
+                      item
+                      xs={12}
+                      md={4}
+                      lg={6}
                     >
-                      <Stats
-                        title="Active Users Today"
-                        data={activeToday}
-                      />
-                    </Paper>
-                  )}
-                </Grid>
-                <Grid
-                  item
-                  xs={12}
-                  md={4}
-                  lg={3}
-                >
-                  {fetchingData && (
-                    <Paper
-                      sx={{
-                        p: 2,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: 240,
-                      }}
+                      <Paper
+                        sx={{
+                          p: 2,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          height: 240,
+                        }}
+                      >
+                        <Chart
+                          data={chartData}
+                          rollingAverage={rollingAverage}
+                        />
+                      </Paper>
+                    </Grid>
+                    <Grid
+                      item
+                      xs={12}
+                      md={4}
+                      lg={3}
                     >
-                      <CircularProgress />
-                    </Paper>
-                  )}
-                  {!fetchingData && (
-                    <Paper
-                      sx={{
-                        p: 2,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        height: 240,
-                      }}
+                      <Paper
+                        sx={{
+                          p: 2,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          height: 240,
+                        }}
+                      >
+                        <Stats
+                          title="Active Users Today"
+                          data={activeToday}
+                        />
+                      </Paper>
+                    </Grid>
+                    <Grid
+                      item
+                      xs={12}
+                      md={4}
+                      lg={3}
                     >
-                      <Stats
-                        title="Total Users"
-                        data={totalUsers}
-                      />
-                    </Paper>
-                  )}
-                </Grid>
+                      <Paper
+                        sx={{
+                          p: 2,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          height: 240,
+                        }}
+                      >
+                        <Stats
+                          title="Total Users"
+                          data={totalUsers}
+                        />
+                      </Paper>
+                    </Grid>
 
-                <Grid
-                  item
-                  xs={12}
-                >
-                  <Paper
-                    sx={{ p: 2, display: 'flex', flexDirection: 'column' }}
-                  >
-                    <Users data={users} />
-                  </Paper>
-                </Grid>
-              </Grid>
+                    <Grid
+                      item
+                      xs={12}
+                    >
+                      <Paper
+                        sx={{ p: 2, display: 'flex', flexDirection: 'column' }}
+                      >
+                        <Users data={users} />
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                )}
+              </>
             )}
             {!user.emailVerified &&
               user.providerData[0].providerId === 'password' && (

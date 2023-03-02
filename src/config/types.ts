@@ -35,3 +35,15 @@ export interface ResetPasswordFormData {
   newPassword: string;
   confirmPassword: string;
 }
+
+export interface DbUser {
+  id: number;
+  uid: string;
+  displayName: string;
+  email: string;
+  providerId: string;
+  photoURL: string;
+  creationTime: string;
+  lastSignInTime: string;
+  timesLoggedIn: number;
+}

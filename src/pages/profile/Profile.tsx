@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { doc, getDoc } from 'firebase/firestore';
 import {
   Avatar,
   CircularProgress,
@@ -20,19 +19,19 @@ import { LoadingButton } from '@mui/lab';
 import { Check as CheckIcon, Edit as EditIcon } from '@mui/icons-material';
 import {
   auth,
-  db,
   updateName,
   deleteAccount,
   reauthenticate,
   changePassword,
 } from '../../config/firebase';
+import { getDbUser, getDbLogEntriesForUser } from '../../config/db';
 import AppBar from '../../components/AppBar';
 import Drawer from '../../components/Drawer';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Copyright from '../../components/Copyright';
 import { UserInfo, PasswordUpdateFormData } from '../../config/types';
 import { updatePasswordSchema } from '../../config/schemas';
-import { errorHandler } from '../../config/utils';
+import { dedupeArray, errorHandler } from '../../config/utils';
 
 export default function Profile() {
   const [userInfo, setUserInfo] = useState<UserInfo>({
@@ -96,10 +95,14 @@ export default function Profile() {
     const fetchData = async () => {
       try {
         if (user) {
-          const docRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(docRef);
+          const userData = await getDbUser(user.uid);
+          const userLogsData = await getDbLogEntriesForUser(user.uid);
+          const userLogsArray = userLogsData.map(
+            (userLog: { entry: string }) => userLog.entry,
+          );
+          const userLogsDeduped = dedupeArray(userLogsArray);
 
-          if (docSnap.exists()) {
+          if (userData.length !== 0) {
             const {
               displayName,
               email,
@@ -108,8 +111,7 @@ export default function Profile() {
               creationTime,
               lastSignInTime,
               timesLoggedIn,
-              accessLogs,
-            } = docSnap.data();
+            } = userData[0];
             setUserInfo({
               displayName,
               email,
@@ -118,7 +120,7 @@ export default function Profile() {
               creationTime,
               lastSignInTime,
               timesLoggedIn,
-              accessLogs,
+              accessLogs: userLogsDeduped,
             });
           }
         }

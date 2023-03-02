@@ -37,6 +37,57 @@ export default function expressApp() {
     }
   });
 
+  router.post('/users', async (req, res, next) => {
+    try {
+      const sql =
+        'INSERT INTO `Users` (uid, displayName, email, providerId, photoURL, creationTime, lastSignInTime, timesLoggedIn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+      const {
+        uid,
+        displayName,
+        email,
+        providerId,
+        photoURL,
+        creationTime,
+        lastSignInTime,
+        timesLoggedIn,
+      } = req.body;
+      const rows = await query(sql, [
+        uid,
+        displayName,
+        email,
+        providerId,
+        photoURL,
+        creationTime,
+        lastSignInTime,
+        timesLoggedIn,
+      ]);
+      const data = emptyOrRows(rows);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json([]);
+      next(err);
+    }
+  });
+
+  router.put('/users', async (req, res, next) => {
+    try {
+      const sql =
+        'UPDATE `Users` SET displayName = ?, lastSignInTime = ?, timesLoggedIn = ? WHERE `uid` = ?';
+      const { displayName, lastSignInTime, timesLoggedIn, uid } = req.body;
+      const rows = await query(sql, [
+        displayName,
+        lastSignInTime,
+        timesLoggedIn,
+        uid,
+      ]);
+      const data = emptyOrRows(rows);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json([]);
+      next(err);
+    }
+  });
+
   router.get('/user/:uid', async (req, res, next) => {
     try {
       const sql = 'SELECT * FROM `Users` WHERE `uid` = ?';
@@ -50,28 +101,11 @@ export default function expressApp() {
     }
   });
 
-  router.post('/users', async (req, res, next) => {
+  router.delete('/user/:uid', async (req, res, next) => {
     try {
-      const sql =
-        'INSERT INTO `Users` (uid, displayName, email, providerId, photoURL, creationTime, lastSignInTime) VALUES (?, ?, ?, ?, ?, ?, ?)';
-      const {
-        uid,
-        displayName,
-        email,
-        providerId,
-        photoURL,
-        creationTime,
-        lastSignInTime,
-      } = req.body;
-      const rows = await query(sql, [
-        uid,
-        displayName,
-        email,
-        providerId,
-        photoURL,
-        creationTime,
-        lastSignInTime,
-      ]);
+      const sql = 'DELETE FROM `Users` WHERE `uid` = ?';
+      const { uid } = req.params;
+      const rows = await query(sql, [uid]);
       const data = emptyOrRows(rows);
       res.json(data);
     } catch (err) {
@@ -80,11 +114,23 @@ export default function expressApp() {
     }
   });
 
-  router.put('/users', async (req, res, next) => {
+  router.get('/access_logs', async (req, res, next) => {
     try {
-      const sql = 'UPDATE `Users` SET lastSignInTime = ? WHERE `uid` = ?';
-      const { lastSignInTime, uid } = req.body;
-      const rows = await query(sql, [lastSignInTime, uid]);
+      const sql = 'SELECT * FROM `Access_Logs`';
+      const rows = await query(sql);
+      const data = emptyOrRows(rows);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json([]);
+      next(err);
+    }
+  });
+
+  router.get('/access_logs/:uid', async (req, res, next) => {
+    try {
+      const sql = 'SELECT `entry` FROM `Access_Logs` WHERE `uid` = ?';
+      const { uid } = req.params;
+      const rows = await query(sql, [uid]);
       const data = emptyOrRows(rows);
       res.json(data);
     } catch (err) {

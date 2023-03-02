@@ -18,9 +18,14 @@ import {
   updatePassword,
   signOut,
 } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
-import axios from 'axios';
+import {
+  getDbUser,
+  addDbUser,
+  updateDbUser,
+  deleteDbUser,
+  addDbLogEntry,
+} from './db';
 import { errorHandler } from './utils';
 
 // Usually, you need to fastidiously guard API keys
@@ -37,7 +42,6 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
 
 const googleProvider = new GoogleAuthProvider();
 const facebookProvider = new FacebookAuthProvider();
@@ -60,29 +64,29 @@ const signInWithProvider = async (provider: string) => {
     } = res;
     const { providerId } = providerData[0];
 
-    const response = await axios.get(`/.netlify/functions/api/user/${uid}`);
-    const userRef = JSON.parse(response.data.body);
-    if (userRef.length === 0) {
-      await axios.post('/.netlify/functions/api/users', {
+    const userData = await getDbUser(uid);
+
+    if (userData.length === 0) {
+      await addDbUser(
         uid,
-        displayName,
-        email,
+        displayName || '',
+        email || '',
         providerId,
-        photoURL,
-        creationTime,
-        lastSignInTime,
-      });
+        photoURL || '',
+        creationTime || '',
+        lastSignInTime || '',
+        1,
+      );
     } else {
-      await axios.put('/.netlify/functions/api/users', {
-        lastSignInTime,
+      await updateDbUser(
+        userData[0].displayName,
+        lastSignInTime || '',
+        userData[0].timesLoggedIn + 1,
         uid,
-      });
+      );
     }
 
-    await axios.post('/.netlify/functions/api/access_logs', {
-      uid,
-      entry: format(new Date(), 'd/M/y'),
-    });
+    await addDbLogEntry(uid, format(new Date(), 'd/M/y'));
   } catch (err) {
     errorHandler(err);
   }
@@ -98,19 +102,16 @@ const logInWithEmailAndPassword = async (email: string, password: string) => {
       },
     } = res;
 
-    const response = await axios.get(`/.netlify/functions/api/user/${uid}`);
-    const userRef = JSON.parse(response.data.body);
-    if (userRef.length !== 0) {
-      await axios.put('/.netlify/functions/api/users', {
-        lastSignInTime,
+    const userData = await getDbUser(uid);
+    if (userData.length !== 0)
+      await updateDbUser(
+        userData[0].displayName,
+        lastSignInTime || '',
+        userData[0].timesLoggedIn + 1,
         uid,
-      });
-    }
+      );
 
-    await axios.post('/.netlify/functions/api/access_logs', {
-      uid,
-      entry: format(new Date(), 'd/M/y'),
-    });
+    await addDbLogEntry(uid, format(new Date(), 'd/M/y'));
   } catch (err) {
     errorHandler(err);
   }
@@ -131,21 +132,18 @@ const registerWithEmailAndPassword = async (
 
     sendEmailVerification(user);
 
-    await axios.post('/.netlify/functions/api/users', {
+    await addDbUser(
       uid,
       displayName,
       email,
-      providerId: 'password',
-      photoURL:
-        'https://mariusschulz.com/images/headshots/marius-schulz-64x64.226mdsvvdn.imm.jpg',
-      creationTime,
-      lastSignInTime,
-    });
+      'password',
+      '',
+      creationTime || '',
+      lastSignInTime || '',
+      1,
+    );
 
-    await axios.post('/.netlify/functions/api/access_logs', {
-      uid,
-      entry: format(new Date(), 'd/M/y'),
-    });
+    await addDbLogEntry(uid, format(new Date(), 'd/M/y'));
   } catch (err) {
     errorHandler(err);
   }
@@ -195,10 +193,14 @@ const logout = () => {
 
 const updateName = async (userId: string, displayName: string) => {
   try {
-    const docRef = doc(db, 'users', userId);
-    await updateDoc(docRef, {
-      displayName,
-    });
+    const userData = await getDbUser(userId);
+    if (userData.length !== 0)
+      await updateDbUser(
+        displayName,
+        userData[0].lastSignInTime,
+        userData[0].timesLoggedIn,
+        userId,
+      );
   } catch (err) {
     errorHandler(err);
   }
@@ -262,8 +264,9 @@ const deleteAccount = async () => {
   try {
     const user = auth.currentUser;
     if (user) {
-      const docRef = doc(db, 'users', user.uid);
-      await deleteDoc(docRef);
+      const userData = await getDbUser(user.uid);
+      if (userData.length !== 0) await deleteDbUser(user.uid);
+
       await deleteUser(user);
       alert('Account Deleted!');
     }
@@ -281,7 +284,6 @@ const deleteAccount = async () => {
 
 export {
   auth,
-  db,
   deleteAccount,
   signInWithProvider,
   logInWithEmailAndPassword,
