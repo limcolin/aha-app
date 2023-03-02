@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { CssBaseline } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -28,11 +28,14 @@ const themeDark = createTheme({
 function App() {
   const [light, setLight] = useState(true);
   const [user, loading, error] = useAuthState(auth);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
     if (error) console.log(error);
-  }, [user, loading, error]);
+    if (user) navigate('/dashboard');
+    else navigate('/login');
+  }, [user, loading, error, navigate]);
 
   return (
     <ThemeProvider theme={light ? themeLight : themeDark}>
