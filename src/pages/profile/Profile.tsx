@@ -95,6 +95,7 @@ export default function Profile() {
     const fetchData = async () => {
       try {
         if (user) {
+          console.log(user);
           const userData = await getDbUser(user.uid);
           const userLogsData = await getDbLogEntriesForUser(user.uid);
           const userLogsArray = userLogsData.map(
